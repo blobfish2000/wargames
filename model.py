@@ -96,7 +96,6 @@ class DiceRoll:
             output_modifier = self.modifier - other.modifier
             return DiceRoll(output_dice, output_modifier)
 
-
     def __eq__(self, other):
         if isinstance(other, DiceRoll):
             dice_count = {}
@@ -138,22 +137,21 @@ class DiceRoll:
         """
         return len(self.dice) + self.modifier
 
-    def probability_above(self, value, simulations=1000):
+    def probability_above(self, value, simulations=10000):
         """
         Returns the probability of rolling a value or higher.
         """
-        if value >= self.max():
+        if value > self.max():
             return 0
-        return sum(1 for roll in self.simulate(simulations) if roll >= value) / simulations
+        elif value <= self.min():
+            return 1
+        return sum(1 for _ in range(simulations) if self.roll() >= value)/simulations
 
-    def probability_below(self, value, simulations=1000):
+    def probability_below(self, value, simulations=10000):
         """
         Returns the probability of rolling a value or lower.
         """
-        if value < self.min():
-            return 0
-        return sum(1 for roll in self.simulate(simulations) if roll <= value) / simulations
-
+        return 1 - self.probability_above(value+1, simulations)
 
 class Attack:
     """
@@ -169,10 +167,17 @@ class Attack:
         actor (Character): The character performing the attack.
     """
 
-    def __init__(self, name, damage_type, damage_dice, attack_roll=None, save_dc=None, actor=None):
+    def __init__(self, name, damage_type, damage_dice, actor, attack_roll=None, save_dc=None):
         self.name = name
+        if damage_type not in DAMAGE_TYPES:
+            raise ValueError("Invalid damage type.")
         self.damage_type = damage_type
         self.damage_dice = damage_dice
+        self.actor = actor
+        self.attack_roll = attack_roll
+        self.save_dc = save_dc
+
+        
 
     def __str__(self):
         return self.name + ": " + str(self.damage_dice)
@@ -184,26 +189,33 @@ class Attack:
         """
         Performs the attack.
         """
-        log_string = self.actor.name + " attacks " + target.name + " with " + self.name + ": "
+        log_string = self.actor.name + " attacks " + target.name + " with " + self.name + ":\n"
         if self.attack_roll is not None:
-            if self.attack_roll.roll() >= target.ac:
-                target.take_damage(self.damage_dice.roll(), self.damage_type)
-                log_string += " Rolls " + str(self.attack_roll) + " >= " + str(target.ac) + ": Hit"
-                log_string += " Damage: " + str(self.damage_dice)
+            roll = self.attack_roll.roll()
+            if roll >= target.ac:
+                log_string += " Rolls " + str(roll) + " >= " + str(target.ac) + ": Hit\n"
+                damage = self.damage_dice.roll()
+                log_string += " Damage: " + str(damage)
+                target.take_damage(damage, self.damage_type)
             else:
                 log_string += " Rolls " + str(self.attack_roll) + " < " + str(target.ac) + ": Miss"
         elif self.save_dc is not None:
             target_save = target.saves[self.save_ability].roll()
             if self.save_dc >= target_save:
-                log_string += " Rolls " + str(target_save) + " >= " + str(self.save_dc) + ": Save"
-                target.take_damage(Math.floor(self.damage_dice.roll()/2), self.damage_type)
+                log_string += " Rolls " + str(target_save) + " >= " + str(self.save_dc) + ": Save\n"
+                damage = Math.floor(self.damage_dice.roll()/2)
+                log_string += " Damage: " + damage
+                target.take_damage(damage, self.damage_type)
             else:
-                target.take_damage(self.damage_dice.roll(), self.damage_type)
-                log_string += " Rolls " + str(target_save) + " < " + str(self.save_dc) + ": Fails"
-                log_string += " Damage: " + str(self.damage_dice)
+                log_string += " Rolls " + str(target_save) + " < " + str(self.save_dc) + ": Fails\n"
+                damage = self.damage_dice.roll()
+                log_string += " Damage: " + damage
+                target.take_damage(damage, self.damage_type)
         else:
-            target.take_damage(self.damage_dice.roll(), self.damage_type)
             log_string += " Damage: " + str(self.damage_dice)
+            target.take_damage(self.damage_dice.roll(), self.damage_type)
+        log_string += "\n" + target.name + " has " + str(target.hp_current) + " HP left."
+        print(log_string)
 
 
 
@@ -223,7 +235,15 @@ class Actor:
         initiative (int): The initiative of the actor
     """
 
-    def __init__(self, name, hp_max, ac, resistances=[], vulnerabilities=[], attacks=[], initiative=0):
+    def __init__(self,
+            name, 
+            hp_max, 
+            ac, 
+            resistances=[], 
+            vulnerabilities=[], 
+            attacks=[], 
+            initiative=0):
+
         self.name = name
         self.hp_max = hp_max
         self.hp_current = hp_max

@@ -48,6 +48,10 @@ class TestDiceRoll(unittest.TestCase):
         self.assertEqual(simplified_dice_roll.probability_below(1),0)
         self.assertEqual(simplified_dice_roll.probability_below(11),1)
 
+class TestAttack(unittest.TestCase):
+    def setUp(self):
+
+    def test_attack_max(self):
         
 
 if __name__ == '__main__':
